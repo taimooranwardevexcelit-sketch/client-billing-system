@@ -193,7 +193,7 @@ export default function LandingPage() {
                 color: 'bg-pink-50'
               },
               { 
-                icon: <Image className="w-10 h-10 text-yellow-500" />, 
+                icon: <ImageIcon className="w-10 h-10 text-yellow-500" />, 
                 title: 'Large Format', 
                 desc: 'Make a big impact with banners, posters, trade show displays, and signage that commands attention.',
                 color: 'bg-yellow-50'
