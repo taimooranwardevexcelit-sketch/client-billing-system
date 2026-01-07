@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,24 +20,33 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const bill = await prisma.bill.create({
-      data: {
-        billNumber,
-        totalAmount: parseFloat(totalAmount),
-        paidAmount: 0,
-        outstandingAmount: parseFloat(outstandingAmount || totalAmount),
-        status: 'PENDING',
-        dueDate: dueDate ? new Date(dueDate) : null,
-        notes: notes || null,
-        clientId,
-        projectId: projectId || null
-      },
-      include: {
-        client: true,
-        project: true,
-        payments: true
-      }
-    })
+    const { data: bill, error } = await supabase
+      .from('bills')
+      .insert([
+        {
+          bill_number: billNumber,
+          total_amount: parseFloat(totalAmount),
+          paid_amount: 0,
+          outstanding_amount: parseFloat(outstandingAmount || totalAmount),
+          status: 'PENDING' as const,
+          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+          notes: notes || null,
+          client_id: clientId,
+          project_id: projectId || null
+        }
+      ])
+      .select(`
+        *,
+        client:clients (*),
+        project:projects (*),
+        payments (*)
+      `)
+      .single()
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to create bill' }, { status: 500 })
+    }
 
     return NextResponse.json(bill, { status: 201 })
   } catch (error) {

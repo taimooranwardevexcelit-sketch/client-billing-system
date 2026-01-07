@@ -13,24 +13,30 @@ export type Database = {
         Row: {
           id: string
           email: string
-          password_hash: string
-          full_name: string
+          password: string
+          name: string
+          role: 'ADMIN' | 'USER'
+          client_id: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
           email: string
-          password_hash: string
-          full_name: string
+          password: string
+          name: string
+          role?: 'ADMIN' | 'USER'
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           email?: string
-          password_hash?: string
-          full_name?: string
+          password?: string
+          name?: string
+          role?: 'ADMIN' | 'USER'
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -203,6 +209,38 @@ export type Database = {
           rate_per_sq_meter?: number
           description?: string | null
           created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      settings: {
+        Row: {
+          id: string
+          default_rate_per_sq_ft: number
+          company_name: string
+          company_address: string | null
+          company_phone: string | null
+          tax_rate: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          default_rate_per_sq_ft?: number
+          company_name?: string
+          company_address?: string | null
+          company_phone?: string | null
+          tax_rate?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          default_rate_per_sq_ft?: number
+          company_name?: string
+          company_address?: string | null
+          company_phone?: string | null
+          tax_rate?: number
           created_at?: string
           updated_at?: string
         }

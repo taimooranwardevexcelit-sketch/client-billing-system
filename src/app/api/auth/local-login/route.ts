@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { supabase } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
@@ -13,15 +13,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get user from local database
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      include: {
-        client: true
-      }
-    })
+    // Get user from Supabase
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*, client:clients (*)')
+      .eq('email', email.toLowerCase())
+      .single()
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
@@ -44,7 +43,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       name: user.name,
       role: user.role,
-      clientId: user.clientId,
+      clientId: user.client_id,
       client: user.client
     }
 
@@ -77,4 +76,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

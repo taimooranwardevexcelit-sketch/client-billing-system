@@ -1,25 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { supabase } from '@/lib/supabase'
 
 // GET all payments
 export async function GET() {
   try {
-    const payments = await prisma.payment.findMany({
-      include: {
-        bill: {
-          include: {
-            client: true,
-            project: true
-          }
-        }
-      },
-      orderBy: {
-        paymentDate: 'desc'
-      }
-    })
+    const { data: payments, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        bill:bills (
+          *,
+          client:clients (*),
+          project:projects (*)
+        )
+      `)
+      .order('payment_date', { ascending: false })
 
-    return NextResponse.json(payments)
+    if (error) {
+      console.error('Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 })
+    }
+
+    return NextResponse.json(payments || [])
   } catch (error) {
     console.error('Error fetching payments:', error)
     return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 })
@@ -39,18 +41,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the bill
-    const bill = await prisma.bill.findUnique({
-      where: { id: billId },
-      include: { payments: true }
-    })
+    const { data: bill, error: billError } = await supabase
+      .from('bills')
+      .select('*, payments(*)')
+      .eq('id', billId)
+      .single()
 
-    if (!bill) {
+    if (billError || !bill) {
       return NextResponse.json({ error: 'Bill not found' }, { status: 404 })
     }
 
     const paymentAmount = parseFloat(amount)
-    const newPaidAmount = bill.paidAmount + paymentAmount
-    const newOutstandingAmount = bill.totalAmount - newPaidAmount
+    const newPaidAmount = bill.paid_amount + paymentAmount
+    const newOutstandingAmount = bill.total_amount - newPaidAmount
 
     // Determine new status
     let newStatus = bill.status
@@ -60,37 +63,44 @@ export async function POST(request: NextRequest) {
       newStatus = 'PARTIAL'
     }
 
-    // Create payment and update bill in a transaction
-    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const payment = await tx.payment.create({
-        data: {
-          billId,
-          amount: paymentAmount,
-          method: method || 'CASH',
-          notes: notes || null,
-          paymentDate: paymentDate ? new Date(paymentDate) : new Date()
-        }
+    // Create payment
+    const { data: payment, error: paymentError } = await supabase
+      .from('payments')
+      .insert({
+        bill_id: billId,
+        amount: paymentAmount,
+        method: method || 'CASH',
+        notes: notes || null,
+        payment_date: paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString()
       })
+      .select()
+      .single()
 
-      const updatedBill = await tx.bill.update({
-        where: { id: billId },
-        data: {
-          paidAmount: newPaidAmount,
-          outstandingAmount: newOutstandingAmount,
-          status: newStatus,
-          paidDate: newStatus === 'PAID' ? new Date() : bill.paidDate
-        },
-        include: {
-          payments: true,
-          client: true,
-          project: true
-        }
+    if (paymentError) {
+      console.error('Payment creation error:', paymentError)
+      return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 })
+    }
+
+    // Update bill
+    const { data: updatedBill, error: updateError } = await supabase
+      .from('bills')
+      .update({
+        paid_amount: newPaidAmount,
+        outstanding_amount: newOutstandingAmount,
+        status: newStatus,
+        paid_date: newStatus === 'PAID' ? new Date().toISOString() : bill.paid_date,
+        updated_at: new Date().toISOString()
       })
+      .eq('id', billId)
+      .select('*, client:clients (*), project:projects (*), payments(*)')
+      .single()
 
-      return { payment, bill: updatedBill }
-    })
+    if (updateError) {
+      console.error('Bill update error:', updateError)
+      return NextResponse.json({ error: 'Failed to update bill' }, { status: 500 })
+    }
 
-    return NextResponse.json(result, { status: 201 })
+    return NextResponse.json({ payment, bill: updatedBill }, { status: 201 })
   } catch (error) {
     console.error('Error creating payment:', error)
     return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 })
@@ -107,32 +117,36 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Bill ID is required' }, { status: 400 })
     }
 
-    const bill = await prisma.bill.findUnique({
-      where: { id: billId }
-    })
+    const { data: bill, error: billError } = await supabase
+      .from('bills')
+      .select('*')
+      .eq('id', billId)
+      .single()
 
-    if (!bill) {
+    if (billError || !bill) {
       return NextResponse.json({ error: 'Bill not found' }, { status: 404 })
     }
 
-    const updateData: any = {}
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    }
     
     if (status) {
       updateData.status = status
       if (status === 'PAID') {
-        updateData.paidDate = new Date()
+        updateData.paid_date = new Date().toISOString()
       }
     }
 
     if (paidAmount !== undefined) {
       const paid = parseFloat(paidAmount)
-      updateData.paidAmount = paid
-      updateData.outstandingAmount = bill.totalAmount - paid
+      updateData.paid_amount = paid
+      updateData.outstanding_amount = bill.total_amount - paid
       
       // Auto-update status based on payment
-      if (paid >= bill.totalAmount) {
+      if (paid >= bill.total_amount) {
         updateData.status = 'PAID'
-        updateData.paidDate = new Date()
+        updateData.paid_date = new Date().toISOString()
       } else if (paid > 0) {
         updateData.status = 'PARTIAL'
       } else {
@@ -140,15 +154,17 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const updatedBill = await prisma.bill.update({
-      where: { id: billId },
-      data: updateData,
-      include: {
-        payments: true,
-        client: true,
-        project: true
-      }
-    })
+    const { data: updatedBill, error: updateError } = await supabase
+      .from('bills')
+      .update(updateData)
+      .eq('id', billId)
+      .select('*, client:clients (*), project:projects (*), payments(*)')
+      .single()
+
+    if (updateError) {
+      console.error('Bill update error:', updateError)
+      return NextResponse.json({ error: 'Failed to update bill' }, { status: 500 })
+    }
 
     return NextResponse.json(updatedBill)
   } catch (error) {
@@ -156,4 +172,3 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to update bill' }, { status: 500 })
   }
 }
-
