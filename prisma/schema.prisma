@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(USER)
+  clientId  String?  @unique
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  projects Project[]
+  bills    Bill[]
+  user     User?
+
+  @@map("clients")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  length      Float    // in feet
+  width       Float    // in feet
+  area        Float    // calculated area in square feet
+  ratePerSqFt Float    // rate per square foot
+  totalAmount Float    // calculated total amount
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  bills    Bill[]
+
+  @@map("projects")
+}
+
+model Bill {
+  id            String      @id @default(cuid())
+  billNumber    String      @unique
+  totalAmount   Float
+  paidAmount    Float       @default(0)
+  outstandingAmount Float   // calculated field
+  status        BillStatus  @default(PENDING)
+  dueDate       DateTime?
+  paidDate      DateTime?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  clientId  String
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  payments Payment[]
+
+  @@map("bills")
+}
+
+model Payment {
+  id          String      @id @default(cuid())
+  amount      Float
+  paymentDate DateTime    @default(now())
+  method      PaymentMethod @default(CASH)
+  notes       String?
+  createdAt   DateTime    @default(now())
+
+  // Relations
+  billId String
+  bill   Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Settings {
+  id                 String   @id @default(cuid())
+  defaultRatePerSqFt Float    @default(100)
+  companyName        String   @default("My Company")
+  companyAddress     String?
+  companyPhone       String?
+  taxRate            Float    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("settings")
+}
+
+enum BillStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  ONLINE
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
