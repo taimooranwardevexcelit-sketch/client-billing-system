@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 // GET all payments
 export async function GET() {
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create payment and update bill in a transaction
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const payment = await tx.payment.create({
         data: {
           billId,
